@@ -1,3 +1,14 @@
+'''
+This code includes 
+  Creating credentials for DBMS, 
+  Import ONNX model from AI23_Bucket,
+  Insert data into supply chain tables,
+  Implement vector embedding by using all_MiniLM_L12_v2.onnx,
+  Perform a semantic search based on vector, 
+  Perform a hybrid search based on vector 70 percent and key-value 30 percent.
+  
+'''
+
 SELECT * FROM USER_CREDENTIALS;
 SELECT * FROM DBMS_CLOUD.LIST_OBJECTS('FREE23AI_CRED', 'https://objectstorage.us-chicago-1.oraclecloud.com/p/_f155n_-_T2Bjf0l0AJHJWglzYpGpMm8iO2GT8mzxTjBvpKB5id_XgY7AjtKeMM6/n/axr2is69mpc4/b/AI23_Bucket/o/all_MiniLM_L12_v2.onnx');
 
@@ -600,3 +611,22 @@ ORDER BY VECTOR_DISTANCE(sr.supply_review_vector, uq.vector, MANHATTAN)
 FETCH FIRST 1 ROWS ONLY;
 
 SELECT * FROM SUPPLIER_REVIEWS;
+
+SELECT 
+  sr.review_id,
+  sr.supplier_id,
+  sr.review_text,
+  sr.rating,
+  sr.review_date,
+  sr.submitted_by,
+  -- Calculate hybrid score
+  (0.7 * (1 - VECTOR_DISTANCE(sr.supply_review_vector, uq.vector, COSINE))) +
+  (0.3 * (sr.rating / 5.0)) AS hybrid_score
+FROM supplier_reviews sr
+CROSS JOIN (
+  SELECT question_vector AS vector
+  FROM user_questions
+  WHERE question_id = 7
+) uq
+ORDER BY hybrid_score DESC
+FETCH FIRST 2 ROWS ONLY;
