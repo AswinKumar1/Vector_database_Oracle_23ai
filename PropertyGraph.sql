@@ -1,0 +1,173 @@
+INSERT INTO ITEMS (ITEM_ID, ITEM_NAME, ITEM_TYPE, UNIT_PRICE, QUANTITY_IN_STOCK, SUPPLIER_ID) VALUES
+(1006, 'Night Vision Goggles', 'Electronics', 5000, 150, 101),  -- Military equipment
+(1007, 'Medical Supply Pack', 'Medical', 2500, 200, 103),       -- Medical kit
+(1008, 'Military Radio', 'Electronics', 4500, 100, 102),         -- Communication equipment
+(1009, 'Explosives', 'Ammunition', 1000, 3000, 102),             -- Ammunition for military use
+(1010, 'Field Tent', 'Camping', 1500, 250, 101);                 -- Temporary shelters
+
+INSERT INTO MAINTENANCE_LOGS (LOG_ID, ITEM_ID, MAINTENANCE_DATE, LOG_TEXT, TECHNICIAN_ID, NEXT_SERVICE_DATE) VALUES
+(5, 1006, TO_DATE('2023-06-01', 'YYYY-MM-DD'), 'Routine check. No major issues found.', 6001, TO_DATE('2023-12-01', 'YYYY-MM-DD')),
+(6, 1007, TO_DATE('2023-06-15', 'YYYY-MM-DD'), 'Replacement of expired medical supplies.', 6002, TO_DATE('2023-12-15', 'YYYY-MM-DD')),
+(7, 1008, TO_DATE('2023-06-20', 'YYYY-MM-DD'), 'Repaired broken circuit in the radio unit.', 6003, TO_DATE('2023-12-20', 'YYYY-MM-DD')),
+(8, 1009, TO_DATE('2023-07-01', 'YYYY-MM-DD'), 'Checked explosives inventory. Reordered necessary supplies.', 6004, TO_DATE('2024-01-01', 'YYYY-MM-DD')),
+(9, 1010, TO_DATE('2023-07-10', 'YYYY-MM-DD'), 'Field tent setup completed and inspected.', 6005, TO_DATE('2024-01-10', 'YYYY-MM-DD'));
+
+INSERT INTO ORDERS (ORDER_ID, ORDER_DATE, EXPECTED_DELIVERY, ACTUAL_DELIVERY, SUPPLIER_ID, STATUS) VALUES
+(2005, TO_DATE('2023-03-15', 'YYYY-MM-DD'), TO_DATE('2023-04-01', 'YYYY-MM-DD'), TO_DATE('2023-03-30', 'YYYY-MM-DD'), 101, 'Delivered'),
+(2006, TO_DATE('2023-03-20', 'YYYY-MM-DD'), TO_DATE('2023-04-05', 'YYYY-MM-DD'), TO_DATE('2023-04-07', 'YYYY-MM-DD'), 103, 'Delivered'),
+(2007, TO_DATE('2023-03-25', 'YYYY-MM-DD'), TO_DATE('2023-04-10', 'YYYY-MM-DD'), TO_DATE('2023-04-12', 'YYYY-MM-DD'), 102, 'Delivered');
+
+INSERT INTO ORDER_ITEMS (ORDER_ITEM_ID, ORDER_ID, ITEM_ID, QUANTITY_ORDERED, PRICE_PER_UNIT) VALUES
+(3006, 2005, 1006, 50, 5000),
+(3007, 2006, 1007, 100, 2500),
+(3008, 2007, 1008, 75, 4500);
+
+INSERT INTO SHIPMENTS (SHIPMENT_ID, SHIPMENT_DATE, WAREHOUSE_ID, DESTINATION, SHIPMENT_STATUS) VALUES
+(7005, TO_DATE('2023-06-01', 'YYYY-MM-DD'), 4001, 'Forward Base X', 'Delivered'),
+(7006, TO_DATE('2023-06-05', 'YYYY-MM-DD'), 4002, 'Base Y', 'Delivered'),
+(7007, TO_DATE('2023-06-10', 'YYYY-MM-DD'), 4003, 'Forward Base Z', 'Delivered');
+
+INSERT INTO SHIPMENT_ITEMS (SHIPMENT_ITEM_ID, SHIPMENT_ID, ITEM_ID, QUANTITY_SHIPPED) VALUES
+(8006, 7005, 1006, 50),
+(8007, 7006, 1007, 100),
+(8008, 7007, 1008, 75);
+
+DECLARE
+    v_embedding VECTOR;  -- Variable to hold the generated vector (embedding)
+    v_log_text VARCHAR2(4000);  -- Variable to hold the log text
+BEGIN
+    -- Loop through the maintenance logs to embed the log text
+    FOR rec IN (SELECT LOG_ID, LOG_TEXT FROM MAINTENANCE_LOGS) LOOP
+        -- Get the log text
+        v_log_text := rec.LOG_TEXT;
+        
+        -- Generate the embedding for the log text using the embedding model
+        SELECT TO_VECTOR(VECTOR_EMBEDDING(MINILM_MODEL USING v_log_text AS DATA))
+        INTO v_embedding
+        FROM dual;
+        
+        -- Update the log with the generated embedding
+        UPDATE MAINTENANCE_LOGS
+        SET LOG_TEXT_VECTOR = v_embedding
+        WHERE LOG_ID = rec.LOG_ID;
+    END LOOP;
+    
+    COMMIT;  -- Commit the transaction to persist the data
+    DBMS_OUTPUT.PUT_LINE('Successfully updated maintenance log data with embeddings.');
+END;
+/
+
+
+-- Create edge tables for relationships
+CREATE TABLE ORDER_CONTAINS_ITEM (
+    ID NUMBER PRIMARY KEY,
+    ORDER_ID NUMBER,
+    ITEM_ID NUMBER,
+    FOREIGN KEY (ORDER_ID) REFERENCES ORDERS(ORDER_ID),
+    FOREIGN KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+);
+
+CREATE TABLE MAINTENANCE_LOG_FOR_ITEM (
+    ID NUMBER PRIMARY KEY,
+    LOG_ID NUMBER,
+    ITEM_ID NUMBER,
+    FOREIGN KEY (LOG_ID) REFERENCES MAINTENANCE_LOGS(LOG_ID),
+    FOREIGN KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+);
+
+CREATE TABLE ORDER_ITEM_CONTAINS_ITEM (
+    ID NUMBER PRIMARY KEY,
+    ORDER_ITEM_ID NUMBER,
+    ITEM_ID NUMBER,
+    FOREIGN KEY (ORDER_ITEM_ID) REFERENCES ORDER_ITEMS(ORDER_ITEM_ID),
+    FOREIGN KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+);
+
+-- Insert edge data for ORDER_CONTAINS_ITEM (relationship between ORDERS and ITEMS)
+INSERT INTO ORDER_CONTAINS_ITEM (ID, ORDER_ID, ITEM_ID)
+VALUES (1, 2005, 1006);
+
+INSERT INTO ORDER_CONTAINS_ITEM (ID, ORDER_ID, ITEM_ID)
+VALUES (2, 2006, 1007);
+
+-- Insert edge data for MAINTENANCE_LOG_FOR_ITEM (relationship between MAINTENANCE_LOGS and ITEMS)
+INSERT INTO MAINTENANCE_LOG_FOR_ITEM (ID, LOG_ID, ITEM_ID)
+VALUES (1, 5, 1006);
+
+INSERT INTO MAINTENANCE_LOG_FOR_ITEM (ID, LOG_ID, ITEM_ID)
+VALUES (2, 6, 1007);
+
+INSERT INTO MAINTENANCE_LOG_FOR_ITEM (ID, LOG_ID, ITEM_ID)
+VALUES (3, 7, 1008);  -- Maintenance log 7 related to ITEM 1008
+
+INSERT INTO MAINTENANCE_LOG_FOR_ITEM (ID, LOG_ID, ITEM_ID)
+VALUES (4, 8, 1009);  -- Maintenance log 8 related to ITEM 1009
+
+INSERT INTO MAINTENANCE_LOG_FOR_ITEM (ID, LOG_ID, ITEM_ID)
+VALUES (5, 9, 1010);  -- Maintenance log 9 related to ITEM 1010
+
+
+-- Insert edge data for ORDER_ITEM_CONTAINS_ITEM (relationship between ORDER_ITEMS and ITEMS)
+INSERT INTO ORDER_ITEM_CONTAINS_ITEM (ID, ORDER_ITEM_ID, ITEM_ID)
+VALUES (1, 3006, 1006);
+
+INSERT INTO ORDER_ITEM_CONTAINS_ITEM (ID, ORDER_ITEM_ID, ITEM_ID)
+VALUES (2, 3007, 1007);
+
+-- Create the graph schema with vertex tables (suppliers, items, orders, etc.)
+CREATE PROPERTY GRAPH SUPPLY_CHAIN_GRAPH
+    VERTEX TABLES (
+        SUPPLIERS
+        KEY (SUPPLIER_ID)
+        PROPERTIES (SUPPLIER_ID, SUPPLIER_NAME, CONTACT_NAME, CONTACT_PHONE, CONTACT_EMAIL, CONTRACT_START, CONTRACT_END),
+        
+        ITEMS
+        KEY (ITEM_ID)
+        PROPERTIES (ITEM_ID, ITEM_NAME, ITEM_TYPE, UNIT_PRICE, QUANTITY_IN_STOCK, SUPPLIER_ID),
+        
+        ORDERS
+        KEY (ORDER_ID)
+        PROPERTIES (ORDER_ID, ORDER_DATE, EXPECTED_DELIVERY, ACTUAL_DELIVERY, SUPPLIER_ID, STATUS),
+        
+        ORDER_ITEMS
+        KEY (ORDER_ITEM_ID)
+        PROPERTIES (ORDER_ITEM_ID, ORDER_ID, ITEM_ID, QUANTITY_ORDERED, PRICE_PER_UNIT),
+        
+        MAINTENANCE_LOGS
+        KEY (LOG_ID)
+        PROPERTIES (LOG_ID, ITEM_ID, MAINTENANCE_DATE, LOG_TEXT, TECHNICIAN_ID, NEXT_SERVICE_DATE)
+    )
+    
+    EDGE TABLES (        
+        -- Edge between ORDER and ITEM (ORDER_CONTAINS_ITEM)
+        ORDER_CONTAINS_ITEM
+        KEY (ID)
+        SOURCE KEY (ORDER_ID) REFERENCES ORDERS(ORDER_ID)
+        DESTINATION KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+        PROPERTIES (ORDER_ID, ITEM_ID),
+        
+        -- Edge between MAINTENANCE_LOGS and ITEM (MAINTENANCE_LOG_FOR_ITEM)
+        MAINTENANCE_LOG_FOR_ITEM
+        KEY (ID)
+        SOURCE KEY (LOG_ID) REFERENCES MAINTENANCE_LOGS(LOG_ID)
+        DESTINATION KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+        PROPERTIES (LOG_ID, ITEM_ID),
+        
+        -- Edge between ORDER_ITEM and ITEM (ORDER_ITEM_CONTAINS_ITEM)
+        ORDER_ITEM_CONTAINS_ITEM
+        KEY (ID)
+        SOURCE KEY (ORDER_ITEM_ID) REFERENCES ORDER_ITEMS(ORDER_ITEM_ID)
+        DESTINATION KEY (ITEM_ID) REFERENCES ITEMS(ITEM_ID)
+        PROPERTIES (ORDER_ITEM_ID, ITEM_ID)
+    );
+
+
+-- Counting the Number of Maintenance Logs for Each Item in the Supply Chain Graph
+SELECT item_id, COUNT(1) AS Num_Maintenance_Logs
+FROM graph_table (SUPPLY_CHAIN_GRAPH 
+MATCH (src) - [MAINTENANCE_LOG_FOR_ITEM] -> (dst)
+COLUMNS (dst.ITEM_ID AS item_id)
+)
+GROUP BY item_id
+ORDER BY Num_Maintenance_Logs DESC
+FETCH FIRST 10 ROWS ONLY;
