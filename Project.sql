@@ -10,7 +10,7 @@ This code includes
 '''
 
 SELECT * FROM USER_CREDENTIALS;
-SELECT * FROM DBMS_CLOUD.LIST_OBJECTS('FREE23AI_CRED', 'https://objectstorage.us-chicago-1.oraclecloud.com/p/_f155n_-_T2Bjf0l0AJHJWglzYpGpMm8iO2GT8mzxTjBvpKB5id_XgY7AjtKeMM6/n/axr2is69mpc4/b/AI23_Bucket/o/all_MiniLM_L12_v2.onnx');
+SELECT * FROM DBMS_CLOUD.LIST_OBJECTS('FREE23AI_CRED', '$BUCKET_ID');
 
 GRANT execute on dbms_cloud To FREE23AI_CRED;
 GRANT create mining model TO FREE23AI_CRED;
@@ -26,7 +26,7 @@ END;
 DECLARE
     ONNX_MOD_FILE VARCHAR2(100) := 'all_MiniLM_L12_v2.onnx';
     MODNAME VARCHAR2(500);
-    LOCATION_URI VARCHAR2(200) := 'https://objectstorage.us-chicago-1.oraclecloud.com/p/_f155n_-_T2Bjf0l0AJHJWglzYpGpMm8iO2GT8mzxTjBvpKB5id_XgY7AjtKeMM6/n/axr2is69mpc4/b/AI23_Bucket/o/all_MiniLM_L12_v2.onnx';
+    LOCATION_URI VARCHAR2(200) := '$BUCKET_SECRET';
     META_DATA CLOB;
 BEGIN
     -- Define a simpler model name to avoid potential issues
