@@ -344,3 +344,193 @@ ORDER BY
   sc.delay_range     ASC,   -- most consistent first
   sc.overall_avg_delay ASC -- then fastest on average
 FETCH FIRST 10 ROWS ONLY;
+
+select * from suppliers; 
+
+SELECT 
+  item_id,
+  item_name,
+  quantity_in_stock
+FROM items
+ORDER BY quantity_in_stock     ASC   
+FETCH FIRST 10 ROWS ONLY;  
+
+SELECT 
+  item_id,
+  item_name,
+  quantity_in_stock
+FROM items
+ORDER BY quantity_in_stock     DESC  -- largest first
+FETCH FIRST 10 ROWS ONLY; 
+
+select * from warehouse; 
+
+SELECT
+  w.warehouse_id,
+  SUM(i.quantity_in_stock) AS total_on_hand
+FROM warehouse w
+JOIN items i
+  ON i.supplier_id = w.supplier_id
+GROUP BY w.warehouse_id
+ORDER BY total_on_hand ASC      -- smallest first => “most used”
+FETCH FIRST 5 ROWS ONLY;
+
+
+-- Which warehouses are best suited for heavy inventory to guarantee fast outbound shipments? --
+WITH
+  heavy_q AS (
+    SELECT
+      TO_VECTOR(x
+        VECTOR_EMBEDDING(
+          MINILM_MODEL
+          USING 'heavy items' AS DATA
+        )
+      ) AS heavy_vec
+    FROM dual
+  ),
+  fast_q AS (
+    SELECT
+      TO_VECTOR(
+        VECTOR_EMBEDDING(
+          MINILM_MODEL
+          USING 'fast delivery' AS DATA
+        )
+      ) AS fast_vec
+    FROM dual
+  ),
+  wh_item AS (
+    SELECT
+      w.warehouse_id,
+      i.weight_category_vector,
+      sr.transit_delay_vector
+    FROM warehouse w
+    JOIN items i
+      ON i.supplier_id = w.supplier_id
+    JOIN supplier_reviews sr
+      ON sr.supplier_id = i.supplier_id
+  )
+SELECT
+  wh.warehouse_id,
+  AVG(
+    VECTOR_DISTANCE(
+      wh.weight_category_vector,
+      heavy_q.heavy_vec,
+      EUCLIDEAN
+    )
+  ) AS avg_heavy_score,
+  AVG(
+    VECTOR_DISTANCE(
+      wh.transit_delay_vector,
+      fast_q.fast_vec,
+      EUCLIDEAN
+    )
+  ) AS avg_fast_score
+FROM wh_item wh
+CROSS JOIN heavy_q
+CROSS JOIN fast_q
+GROUP BY
+  wh.warehouse_id
+ORDER BY
+  avg_heavy_score ASC,    -- most “heavy”
+  avg_fast_score  ASC     -- most “fast”
+FETCH FIRST 5 ROWS ONLY;
+
+-- Which suppliers deliver medium-weight goods most reliably across all their warehouses? -- 
+WITH
+  medium_q AS (
+    SELECT
+      TO_VECTOR(
+        VECTOR_EMBEDDING(
+          MINILM_MODEL            -- model name must be a string literal
+          USING 'medium items' AS DATA
+        )
+      ) AS medium_vec
+    FROM dual
+  ),
+  low_delay_q AS (               -- <— remove the extra WITH here
+    SELECT
+      TO_VECTOR(
+        VECTOR_EMBEDDING(
+          MINILM_MODEL
+          USING 'low delay' AS DATA
+        )
+      ) AS delay_vec
+    FROM dual
+  ),
+  supplier_wh AS (
+    SELECT
+      i.supplier_id,
+      w.warehouse_id,
+      VECTOR_DISTANCE(
+        i.weight_category_vector,
+        medium_q.medium_vec,
+        EUCLIDEAN
+      ) AS medium_score,
+      VECTOR_DISTANCE(
+        sr.transit_delay_vector,
+        low_delay_q.delay_vec,
+        EUCLIDEAN
+      ) AS delay_score
+    FROM items i
+    JOIN supplier_reviews sr
+      ON sr.supplier_id = i.supplier_id
+    JOIN warehouse w            -- <— use your actual table name here
+      ON i.supplier_id = w.supplier_id
+    CROSS JOIN medium_q
+    CROSS JOIN low_delay_q
+  )
+SELECT
+  s.supplier_id,
+  s.supplier_name,
+  AVG(mw.delay_score)         AS avg_delay,
+  STDDEV_POP(mw.delay_score)  AS delay_stddev
+FROM supplier_wh mw
+JOIN suppliers s
+  ON s.supplier_id = mw.supplier_id
+GROUP BY
+  s.supplier_id,
+  s.supplier_name
+ORDER BY
+  delay_stddev ASC            -- steadiest performers first
+FETCH FIRST 5 ROWS ONLY;
+
+
+-- For a given warehouse, which top-N heavy SKUs should we prioritize for expedited shipping? -- 
+WITH
+  heavy_q AS (
+    SELECT
+      TO_VECTOR(
+        VECTOR_EMBEDDING(
+          MINILM_MODEL           -- model name must be a string literal
+          USING 'heavy items' AS DATA
+        )
+      ) AS heavy_vec
+    FROM dual
+  ),
+  low_delay_q AS (
+    SELECT
+      TO_VECTOR(
+        VECTOR_EMBEDDING(
+          MINILM_MODEL
+          USING 'low delay'    AS DATA
+        )
+      ) AS delay_vec
+    FROM dual
+  )
+SELECT
+  i.item_id,
+  i.item_name,
+  w. warehouse_id,
+  VECTOR_DISTANCE(i.weight_category_vector, h.heavy_vec, EUCLIDEAN) AS heavy_score,
+  VECTOR_DISTANCE(sr.transit_delay_vector, d.delay_vec,    EUCLIDEAN) AS delay_score
+FROM items i
+JOIN warehouse w
+    ON i.supplier_id = w.supplier_id
+JOIN supplier_reviews sr
+  ON sr.supplier_id = i.supplier_id
+CROSS JOIN heavy_q   h
+CROSS JOIN low_delay_q d
+ORDER BY
+  heavy_score ASC,    -- heaviest first
+  delay_score ASC     -- fastest shipping next
+FETCH FIRST 10 ROWS ONLY;
