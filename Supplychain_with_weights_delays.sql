@@ -57,6 +57,7 @@ END;
 ALTER TABLE supplier_reviews
 ADD transit_delay_vector VECTOR;
 
+
 -- Add those unstructured data into vectors --
 BEGIN
   FOR r IN (SELECT review_id AS id, TRANSIT_DELAY_CATEGORY FROM supplier_reviews) LOOP
